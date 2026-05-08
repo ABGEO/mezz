@@ -1,0 +1,72 @@
+x-common-env: &common-env
+  BR_IFACE: ${BR_IFACE}
+  WAN_IFACE: ${WAN_IFACE}
+  LAN_IFACE: ${LAN_IFACE:-}
+  WIFI_IFACE: ${WIFI_IFACE}
+  WIFI_SSID: ${WIFI_SSID}
+  WIFI_PASSWORD: ${WIFI_PASSWORD}
+  WIFI_COUNTRY_CODE: ${WIFI_COUNTRY_CODE:-US}
+  WIFI_HW_MODE: ${WIFI_HW_MODE:-g}
+  WIFI_CHANNEL: ${WIFI_CHANNEL:-1}
+  LAN_IP: ${LAN_IP}
+  LAN_NETMASK: ${LAN_NETMASK}
+  LAN_DHCP_START: ${LAN_DHCP_START}
+  LAN_DHCP_END: ${LAN_DHCP_END}
+  LAN_DNS_UPSTREAM: ${LAN_DNS_UPSTREAM}
+  LAN_DOMAIN: ${LAN_DOMAIN:-mezz.lab}
+
+services:
+  net-init:
+    image: abgeo/mezz-net-init:latest
+    restart: no
+    network_mode: host
+    # Privileged because writing /proc/sys/net/ipv4/ip_forward needs RW /proc/sys,
+    # which CAP_NET_ADMIN alone doesn't grant. One-shot, runs ~1s, then exits.
+    privileged: true
+    environment: *common-env
+
+  ap:
+    image: abgeo/mezz-ap:latest
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/rfkill:/dev/rfkill
+    environment: *common-env
+    depends_on:
+      net-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "hostapd_cli -p /var/run/hostapd -i $$WIFI_IFACE ping | grep -q PONG" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  lan:
+    image: abgeo/mezz-lan:latest
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+    environment: *common-env
+    volumes:
+      - lan-leases:/var/lib/misc
+      # Optional: mount a local directory of *.conf files (e.g. static DHCP
+      # leases, dhcp-host entries, custom rules) over /etc/dnsmasq.d.
+      # - ./mezz-local:/etc/dnsmasq.d:ro
+    depends_on:
+      net-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD-SHELL", "dig +short +time=2 +tries=1 @127.0.0.1 . NS >/dev/null" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  lan-leases:
