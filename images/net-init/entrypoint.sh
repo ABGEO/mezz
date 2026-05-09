@@ -76,6 +76,13 @@ do_init() {
   iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
   iptables -A FORWARD -i "$BR_IFACE" -o "$WAN_IFACE" -j ACCEPT
 
+  if [ "${MITM_ENABLED:-false}" = "true" ]; then
+    log info "MITM_ENABLED: redirecting LAN tcp/{80,443} to mitmproxy on port ${MITM_PORT:-8080}"
+    sysctl -w net.ipv4.conf.all.send_redirects=0
+    iptables -t nat -A PREROUTING -i "$BR_IFACE" -p tcp -m multiport --dports 80,443 \
+      -j REDIRECT --to-port "${MITM_PORT:-8080}"
+  fi
+
   log info "net-init done"
 }
 

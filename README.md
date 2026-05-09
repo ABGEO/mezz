@@ -47,3 +47,29 @@ docker compose run --rm net-init teardown
 
 Drop `*.conf` files into a local directory and mount it over `/etc/dnsmasq.d` in the `lan` service (see the commented
 `volumes:` block in `docker-compose.yaml`). Useful for static DHCP leases, custom upstream rules, etc.
+
+## Optional services
+
+Mezz ships extra containers behind Docker Compose profiles. Pick what you want with `COMPOSE_PROFILES` in `.env` (
+comma-separated, e.g. `mitm` or `mitm,tcpdump`). The base set (`net-init`, `ap`, `lan`) always runs.
+
+| Profile | What it adds                                                  |
+|---------|---------------------------------------------------------------|
+| `mitm`  | mitmproxy in transparent mode for LAN HTTP/HTTPS interception |
+
+### mitm
+
+Set both in `.env`:
+
+```
+COMPOSE_PROFILES=mitm
+MITM_ENABLED=true
+```
+
+`COMPOSE_PROFILES=mitm` brings up the mitmproxy container; `MITM_ENABLED=true` tells `net-init` to add the iptables
+redirect (LAN tcp/{80,443} -> mitmproxy). Without the env flag the container runs but no traffic reaches it. Web UI is
+on `http://<host>:${MITM_WEB_PORT}` (default `8081`); set `MITM_WEB_PASSWORD` to skip the random token mitmweb prints
+on startup.
+
+Only clients that trust the mitmproxy CA produce decryptable traffic. Pinned-cert apps (most modern phones, many IoT
+clouds) won't show up in clear.

@@ -14,6 +14,8 @@ x-common-env: &common-env
   LAN_DHCP_END: ${LAN_DHCP_END}
   LAN_DNS_UPSTREAM: ${LAN_DNS_UPSTREAM}
   LAN_DOMAIN: ${LAN_DOMAIN:-mezz.lab}
+  MITM_ENABLED: ${MITM_ENABLED:-false}
+  MITM_PORT: ${MITM_PORT:-8080}
 
 services:
   net-init:
@@ -68,5 +70,39 @@ services:
       retries: 3
       start_period: 10s
 
+  mitm:
+    image: mitmproxy/mitmproxy:latest
+    profiles:
+      - "mitm"
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      SSLKEYLOGFILE: /home/mitmproxy/.mitmproxy/sslkeys.log
+    volumes:
+      - mitm-data:/home/mitmproxy/.mitmproxy
+    depends_on:
+      net-init:
+        condition: service_completed_successfully
+    command:
+      - mitmweb
+      - --mode
+      - transparent
+      - --showhost
+      - --listen-port
+      - "${MITM_PORT:-8080}"
+      - --web-host
+      - 0.0.0.0
+      - --web-port
+      - "${MITM_WEB_PORT:-8081}"
+      - --set
+      - web_password=${MITM_WEB_PASSWORD:-}
+    healthcheck:
+      test: [ "CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', ${MITM_PORT:-8080}), 2).close(); socket.create_connection(('127.0.0.1', ${MITM_WEB_PORT:-8081}), 2).close()" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 volumes:
   lan-leases:
+  mitm-data:
